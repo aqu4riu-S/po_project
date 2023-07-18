@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/ggc-app/ggc-app.iml" filepath="$PROJECT_DIR$/ggc-app/ggc-app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/ggc-core/ggc-core.iml" filepath="$PROJECT_DIR$/ggc-core/ggc-core.iml" />
+      <module fileurl="file://$PROJECT_DIR$/po-uilib/po-uilib.iml" filepath="$PROJECT_DIR$/po-uilib/po-uilib.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/project.iml" filepath="$PROJECT_DIR$/.idea/project.iml" />
+    </modules>
+  </component>
+</project>

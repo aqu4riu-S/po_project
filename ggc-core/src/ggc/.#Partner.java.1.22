@@ -1,0 +1,141 @@
+package ggc;
+
+import java.io.Serializable;
+import java.util.LinkedList;
+import java.util.TreeMap;
+
+public class Partner implements Serializable, Comparable<Partner> {
+  
+  private String _id;
+  private String _name;
+  private String _address;
+  private Status _status;
+  private double _acquisitionsValue = 0;
+  private double _salesValue = 0; // includes non-paid sales
+  private double _paidSalesValue = 0;
+  private LinkedList<Notification> _notifications = new LinkedList<>();
+  private TreeMap<String, Boolean> _toggleState; // <productID : true/false>
+
+
+  public Partner(String id) {
+    _id = id;
+  }
+
+  public Partner(String id, String name, String address) {
+    this(id);
+    _name = name;
+    _address = address;
+    _status = new StatusNormal(0, this);
+    _toggleState = new TreeMap<>();
+  }
+
+
+  public void paymentRegister() { _status.paymentRegister(transaction, date);}
+  public void breakdownRegister() { _status.breakdownRegister(transaction, date);}
+
+
+  public LinkedList<Notification> getNotifications() {
+    return _notifications;
+  }
+
+  public String getId() {
+    return _id;
+  }
+
+  public String getName() {
+    return _name;
+  }
+
+  public String getAddress() {
+    return _address;
+  }
+
+  public double getAcquisitionsValue() {
+    return _acquisitionsValue;
+  }
+
+  public double getSalesValue() {
+    return _salesValue;
+  }
+
+  public double getPaidSalesValue() {
+    return _paidSalesValue;
+  }
+
+  public void updateAcquistionsValue(double increment) {
+    _acquisitionsValue += increment;
+  }
+
+  public void updateSalesValue(double increment) {
+    _salesValue += increment;
+  }
+
+  public void updatePaidSalesValue(double increment) {
+    _paidSalesValue += increment;
+  }
+
+  protected void setStatus(Status status) {
+    _status = status;
+  }
+
+  public String getStatus() {
+    return _status.status();
+  }
+
+  public double getPriceToPay(Transaction transaction, int date) {
+    return transaction.getPrice() 
+      * _status.calculateFee(transaction, date)
+      * _status.calculateDiscount(transaction, date);
+  }
+
+
+  // NOTIFICATION METHODS
+
+  public void emptyNotificationsList() { _notifications.clear(); }
+
+  public boolean hasProductToggle(String productID) {
+    return _toggleState.containsKey(productID);
+  }
+
+  // Reverts the toggle state
+  public void setToggle(String productID) {
+    _toggleState.put(productID, !_toggleState.get(productID));
+  }
+
+  public void addNotification(Notification notification) {
+    _notifications.add(notification);
+  }
+
+  public boolean getToggleState(String productID) {
+    return _toggleState.get(productID);
+  }
+
+  public void becomeNotifiable(String productID) { _toggleState.put(productID, true); }
+
+  @Override
+  public String toString() {
+    return getId() + "|" +
+           getName() + "|" + 
+           getAddress() + "|" + 
+           _status.status() + "|" + 
+           _status.getPoints() + "|" + 
+           Math.round(getAcquisitionsValue()) + "|" + 
+           Math.round(getSalesValue()) + "|" + 
+           Math.round(getPaidSalesValue());
+  }
+
+  @Override
+  public int compareTo(Partner other) {
+    return _id.toUpperCase().compareTo(other.getId().toUpperCase());
+  }
+
+  @Override
+  public boolean equals(Object other) {
+    if (other instanceof Partner) {
+      Partner partner = (Partner) other;
+      return partner.getId().toUpperCase().equals(this.getId().toUpperCase());
+    } else {
+      return false;
+    }
+  }
+}
