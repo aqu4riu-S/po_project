@@ -1,0 +1,58 @@
+package ggc.app.transactions;
+
+import ggc.WarehouseManager;
+import pt.tecnico.uilib.menus.Command;
+import pt.tecnico.uilib.menus.CommandException;
+
+import java.util.HashMap;
+//FIXME import classes
+
+/**
+ * Register order.
+ */
+public class DoRegisterAcquisitionTransaction extends Command<WarehouseManager> {
+
+  public DoRegisterAcquisitionTransaction(WarehouseManager receiver) {
+    super(Label.REGISTER_ACQUISITION_TRANSACTION, receiver);
+    addStringField("partnerID", Prompt.partnerKey());
+    addStringField("productID", Prompt.productKey());
+    addRealField("price", Prompt.price());
+    addIntegerField("amount", Prompt.amount());
+  }
+
+  @Override
+  public final void execute() throws CommandException {
+    String partnerID = stringField("partnerID");
+    String productID = stringField("productID");
+    Double price = realField("price");
+    int amount = integerField("amount");
+    if (_receiver.getProduct(productID) == null) {
+        _receiver.turnProductNotifiable(productID);
+        addStringField("recipe", Prompt.addRecipe());
+        if (!stringField("recipe").equals("n")) {
+          // derived product
+          HashMap<String, Integer> _inProducts = new HashMap<>();
+          // ask for noComponents and alpha value
+          addIntegerField("noOfComponents", Prompt.numberOfComponents());
+          addRealField("alpha", Prompt.alpha());
+          // loop to get recipe components
+          for (int i = 0; i < integerField("noOfComponents"); i++) {
+            // ask for component-quantity
+            addStringField("productID", Prompt.productKey());
+            addIntegerField("amount", Prompt.amount());
+            _inProducts.put(stringField("productID"), integerField("amount"));
+          }
+
+          _receiver.addDerivedProduct(productID, price, amount, _inProducts, realField("alpha"));
+        }
+        else {
+          // simple product
+          _receiver.addProduct(productID, price, amount);
+        }
+    }
+    else {
+      _receiver.verifyNotificationConditions(productID, price);
+    }
+    _receiver.registerAcquisition(partnerID, productID, price, amount);
+  }
+}

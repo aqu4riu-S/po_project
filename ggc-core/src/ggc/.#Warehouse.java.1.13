@@ -1,0 +1,144 @@
+package ggc;
+
+// FIXME import classes (cannot import from pt.tecnico or ggc.app)
+import java.awt.*;
+import java.io.Serializable;
+import java.io.IOException;
+import ggc.exceptions.BadEntryException;
+
+import java.util.*;
+
+// @Bruno
+import java.io.File;
+import java.io.FileNotFoundException;
+
+/**
+ * Class Warehouse implements a warehouse.
+ */
+public class Warehouse implements Serializable {
+
+  /** Serial number for serialization. */
+  private static final long serialVersionUID = 202109192006L;
+  
+  private Integer _date = 0;
+
+  // @Bruno
+  private LinkedList<Partner> _partners = new LinkedList<>();
+  //private ArrayList<Partner> _partners = new ArrayList<Partner>();
+  // private ArrayList<Batch> _batches = new ArrayList<Batch>();
+  // private ArrayList<Product> _products = new ArrayList<Product>();
+  private ArrayList<Sector> _stock = new ArrayList<>();
+  private TreeSet<Transaction> _transactions = new TreeSet<>();
+
+  // FIXME define attributes
+  // FIXME define contructor(s)
+  // FIXME define methods
+
+  /** Sector related methods */
+  public void addSector(Product p, int totalStock, Batch b) {
+    _stock.add(new Sector(p, totalStock, b));
+  }
+
+  public void registerSector(String[] line) {
+    int batchStock = Integer.parseInt(line[4]);
+    Batch b = new Batch(null, line[2], Integer.parseInt(line[3]), batchStock);
+
+    for (Sector s : _stock) {
+      /** Existing Product */
+      if (s.getProduct().getName().equals(line[1])) {
+        b.setProduct(s.getProduct());
+        s.addBatch(b);
+        return;
+      }
+      /** Simple Product */
+      if (line.length == 5) {
+        b.setProduct(new Product(line[1]));
+        addSector(b.getProduct(), batchStock, b);
+      }
+      /** Derived Product */
+      else {
+        float productionCost = Float.parseFloat(line[5]);
+        b.setProduct(new DerivedProduct(line[1], new Recipe(createRecipeList(line[6]), productionCost)));
+        addSector(b.getProduct(), batchStock, b);
+      }
+    }
+  }
+
+  public HashMap<Product, Integer> createRecipeList(String recipeStr) {
+    String[] arrComponents = recipeStr.split("#");
+    HashMap<Product, Integer> productList = new HashMap<>();
+    for (String c : arrComponents) {
+      String[] arrComponent = c.split(":");
+      productList.put(new Product(arrComponent[0]), Integer.parseInt(arrComponent[1]));
+    }
+    return productList;
+  }
+
+
+
+  // @Bruno Partner Collection-related methods
+  public void registerPartner (String id, String name, String address) {
+    for (Partner p : _partners) {
+      if (p.getId().equals(id)) {
+        // lanca excecao
+        return;
+      }
+    }
+    _partners.add(new Partner(id, name, address));
+  }
+
+
+  public void toggleProductNotifications(String partnerID, String productID) {}
+  // UnknownProductKeyException
+
+  public void showPartnerSales(String partnerID) {}
+  public void showPartnerAcquisitions(String partnerID) {}
+
+  public Integer getDate() {
+    return _date;
+  }
+
+  public void incrementDate(Integer increment) {
+    _date += increment;
+  }
+
+  public LinkedList<Partner> getPartners() {
+    return _partners;
+  }
+
+  public ArrayList<Product> getProducts() {
+    ArrayList<Product> products = new ArrayList<>();
+    for (Sector sector : _stock) {
+      products.add(sector.getProduct());
+    }
+    return products;
+  }
+
+  /**
+   * @param txtfile filename to be loaded.
+   * @throws IOException
+   * @throws BadEntryException
+   */
+  void importFile(String txtfile) throws IOException, BadEntryException /* FIXME maybe other exceptions */ {
+    //FIXME implement method
+
+    // @Bruno
+    try {
+      Scanner reader = new Scanner(new File(txtfile));
+      while (reader.hasNextLine()) {
+        String[] arrLine = reader.nextLine().split("\\|");
+        // Partner
+        if (arrLine[0].equals("PARTNER")) {
+         addPartner(arrLine[1], arrLine[2], arrLine[3]);
+        }
+        else { // Batch
+          registerSector(arrLine);
+        }
+      }
+
+      reader.close();
+    } catch (FileNotFoundException e) {
+      throw new BadEntryException(txtfile);
+    }
+  }
+}

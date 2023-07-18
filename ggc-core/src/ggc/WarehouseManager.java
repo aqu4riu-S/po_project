@@ -1,0 +1,210 @@
+package ggc;
+
+import java.io.IOException;
+import java.io.FileNotFoundException;
+import java.io.ObjectOutputStream;
+import java.io.ObjectInputStream;
+import java.io.BufferedOutputStream;
+import java.io.BufferedInputStream;
+import java.io.FileOutputStream;
+import java.io.FileInputStream;
+import java.util.*;
+
+import ggc.exceptions.*;
+
+/** Façade for access. */
+public class WarehouseManager {
+
+  /** Name of file storing current store. */
+  private String _filename = "";
+
+  /** The warehouse itself. */
+  private Warehouse _warehouse = new Warehouse();
+
+
+  public Product getProductWithLeastMonetaryValue() { return _warehouse.getProductWithLeastMonetaryValue(); }
+
+  public Partner getPartnerWithLeastAcquisitionValue() { return _warehouse.getPartnerWithLeastAcquisitionValue(); }
+
+  /** Global Balance related methods */
+  public double getAvailable() {
+    return _warehouse.getAvailableBalance();
+  }
+  
+  public double getAccounting() {
+    return _warehouse.getAccountingBalance();
+  }
+
+  public Product getProduct(String id) {
+    return _warehouse.getProduct(id);
+  }
+
+  public void addProduct(String id, double price) {
+    _warehouse.addProduct(id, price);
+  }
+
+  public void addDerivedProduct(String id, double price, LinkedHashMap<String, Integer> _inProducts, double alpha){
+    _warehouse.addDerivedProduct(id, price, _inProducts, alpha);
+  }
+
+  public void registerAcquisition(String partnerID, String productID, double price, int amount)
+          throws PartnerDoesNotExistException, ProductDoesNotExistException{
+    _warehouse.registerAcquisition(partnerID, productID, price, amount);
+  }
+
+  public void registerSaleTransaction(String partnerID, int deadline, String productID, int amount) 
+    throws InsuficientStockException, PartnerDoesNotExistException, ProductDoesNotExistException {
+
+    _warehouse.registerSale(partnerID, deadline, productID, amount);
+  }
+
+  public void registerBreakdownTransaction(String partnerID, String productID, int amount) 
+    throws InsuficientStockException, PartnerDoesNotExistException, ProductDoesNotExistException {
+
+    _warehouse.registerBreakdown(partnerID, productID, amount);
+  }
+
+  public void receivePayment(int transactionID) throws InvalidTransactionIDException {
+    _warehouse.registerPayment(transactionID);
+  }
+
+  public void verifyNotificationConditions(String productID, Double price) { _warehouse.verifyNotificationConditions(productID, price); }
+  public void turnProductNotifiable(String productID) { _warehouse.turnProductNotifiable(productID); }
+
+
+  public String getTransaction(int id) throws InvalidTransactionIDException {
+    return _warehouse.getTransactionString(id);
+  }
+
+
+  /** Date related methods */
+  public Integer getCurrentDate() {
+    return _warehouse.getDate();
+  }
+  public void advanceDate(Integer daysToAdvance) {
+    _warehouse.incrementDate(daysToAdvance);
+  }
+
+
+  /** Partner related methods */
+  public Partner getPartner(String partnerID) throws PartnerDoesNotExistException { 
+    return _warehouse.getPartner(partnerID); 
+  }
+
+  public LinkedList<Partner> getAllPartners() {
+    return _warehouse.getPartners();
+  }
+
+  public Partner showPartner(String id) throws PartnerDoesNotExistException{
+    return _warehouse.getPartner(id);
+  }
+
+  public void registerPartner(String id, String name, String address) 
+    throws PartnerAlreadyExistsException {
+    
+    _warehouse.registerPartner(id, name, address);
+  }
+
+  public LinkedList<Acquisition> showPartnerAcquisitions(String id) throws PartnerDoesNotExistException {
+    return _warehouse.getPartnerAcquisitions(id);
+  }
+
+  public ArrayList<Transaction> showPartnerSalesAndBreakdowns(String id) throws PartnerDoesNotExistException {
+    return _warehouse.getPartnerSalesAndBreakdowns(id);
+  }
+
+  public LinkedList<Transaction> getPaymentsByPartner(String id) throws PartnerDoesNotExistException {
+    return _warehouse.getPaymentsByPartner(id);
+  }
+
+
+  /** Product and batch related methods */
+  public ArrayList<Product> getAllProducts() {
+    return _warehouse.getProducts();
+  }
+
+  public LinkedList<Batch> getAllBatchesUnderPrice(double priceLimit) {
+    return _warehouse.getBatchesUnderPrice(priceLimit);
+  }
+
+  public LinkedList<Batch> getAllBatches() {
+    Collections.sort(_warehouse.getBatches());
+    return _warehouse.getBatches();
+  }
+
+  public TreeSet<Batch> getBatchesWithProduct(String productID) throws ProductDoesNotExistException {
+    Product key = new Product(productID);
+    return _warehouse.getProductBatches(key);
+  }
+
+  public LinkedList<Batch> getBatchesWithPartner(String partnerID) throws PartnerDoesNotExistException {
+    return _warehouse.getPartnerBatches(partnerID);
+  }
+
+  /** Notification related methods */
+  public void toggleProductNotifications(String partnerID, String productID) throws ProductDoesNotExistException, PartnerDoesNotExistException {
+    _warehouse.toggleProductNotifications(partnerID, productID);
+  }
+
+  /** Serialization methods */
+  /**
+   * @throws IOException
+   * @throws FileNotFoundException
+   * @throws MissingFileAssociationException
+   */
+  public void save() 
+    throws IOException, FileNotFoundException, MissingFileAssociationException {
+    
+    if (_filename.equals("")){
+      throw new MissingFileAssociationException();
+    } else {
+      ObjectOutputStream out = 
+        new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(_filename)));
+      out.writeObject(_warehouse);
+      out.close();
+    }
+  }
+
+  /**
+   * @param filename
+   * @throws MissingFileAssociationException
+   * @throws IOException
+   * @throws FileNotFoundException
+   */
+  public void saveAs(String filename) 
+    throws MissingFileAssociationException, FileNotFoundException, IOException {
+    
+    _filename = filename;
+    save();
+  }
+
+  /**
+   * @param filename
+   * @throws UnavailableFileException
+   */
+  public void load(String filename) throws UnavailableFileException {
+    try {
+      _filename = filename;
+      ObjectInputStream in = 
+        new ObjectInputStream(new BufferedInputStream(new FileInputStream(filename)));
+      _warehouse = (Warehouse)in.readObject();
+      in.close();
+    } catch (FileNotFoundException fnfe) {
+      throw new UnavailableFileException(filename);
+    } catch (IOException | ClassNotFoundException e) {
+      e.printStackTrace();
+    } 
+  }
+
+  /**
+   * @param textfile
+   * @throws ImportFileException
+   */
+  public void importFile(String textfile) throws ImportFileException {
+    try {
+	    _warehouse.importFile(textfile);
+    } catch (IOException | BadEntryException | PartnerAlreadyExistsException e) {
+	    throw new ImportFileException(textfile);
+    }
+  }
+}

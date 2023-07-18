@@ -1,0 +1,121 @@
+package ggc;
+
+// FIXME import classes (cannot import from pt.tecnico or ggc.app)
+import java.awt.*;
+import java.io.Serializable;
+import java.io.IOException;
+import ggc.exceptions.BadEntryException;
+
+// @Bruno
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.ArrayList;
+import java.util.Scanner;
+import java.util.TreeMap;
+
+/**
+ * Class Warehouse implements a warehouse.
+ */
+public class Warehouse implements Serializable {
+
+  /** Serial number for serialization. */
+  private static final long serialVersionUID = 202109192006L;
+  
+  private int _date = 0;
+
+  // @Bruno
+  private ArrayList<Partner> _partners = new ArrayList<Partner>();
+  // private ArrayList<Batch> _batches = new ArrayList<Batch>();
+  // private ArrayList<Product> _products = new ArrayList<Product>();
+  private ArrayList<Sector> _stock = new ArrayList<>();
+
+  // FIXME define attributes
+  // FIXME define contructor(s)
+  // FIXME define methods
+
+
+  // @Bruno Sector-related methods
+  public void updateSectorTotalStock(Sector s, int stock) {
+    s.setTotalStock(s.getTotalStock() + stock);
+  }
+
+  public void addBatchToSector(Sector s, Batch b) {
+    s.getBatches().add(b);
+  }
+
+  public void addSector(Product p, int totalStock, Batch b) {
+    _stock.add(new Sector(p, totalStock, b));
+  }
+
+  public TreeMap<String, Integer> createRecipeList(String recipeStr) {
+    String[] arrComponents = recipeStr.split("#");
+    TreeMap<String, Integer> productList = new TreeMap<>();
+    for (String c : arrComponents) {
+      String[] arrComponent = c.split(":");
+      productList.put(arrComponent[0], Integer.parseInt(arrComponent[1]));
+    }
+    return productList;
+  }
+
+  public void registerSector(String[] line) {
+    int batchStock = Integer.parseInt(line[4]);
+    Batch b = new Batch(line[1], line[2], Integer.parseInt(line[3]), batchStock);
+    for (Sector s : _stock) {
+      if (s.getProduct().getName().equals(line[1])) {
+        addBatchToSector(s, b);
+        updateSectorTotalStock(s, batchStock);
+        return;
+      }
+    }
+    // Simple Product
+    if (line.length == 5) {
+      addSector(new Product(line[1]), batchStock, b);
+    }
+    // Derived Product
+    else {
+        float multiplier = Float.parseFloat(line[5]);
+        addSector(new DerivedProduct(line[1], new Recipe(createRecipeList(line[6]), multiplier)), batchStock, b);
+      }
+  }
+
+
+  // @Bruno Partner Collection-related methods
+  public void addPartner(String id, String name, String address) {
+    _partners.add(new Partner(id, name, address));
+  }
+
+
+  /**
+   * @param txtfile filename to be loaded.
+   * @throws IOException
+   * @throws BadEntryException
+   */
+  void importFile(String txtfile) throws IOException, BadEntryException /* FIXME maybe other exceptions */ {
+    //FIXME implement method
+
+    // @Bruno
+    try {
+      Scanner reader = new Scanner(new File(txtfile));
+      while (reader.hasNextLine()) {
+        String[] arrLine = reader.nextLine().split("\\|");
+        // Partner
+        if (arrLine[0].equals("PARTNER")) {
+         addPartner(arrLine[1], arrLine[2], arrLine[3]);
+        }
+        else {
+          // Batch
+          registerSector(arrLine);
+        }
+      }
+
+      // Teste de apresentacao dos dados
+      for (Partner p : _partners) {
+        System.out.println(p);
+      }
+
+      reader.close();
+    } catch (FileNotFoundException e) {
+      throw new BadEntryException();
+    }
+  }
+}

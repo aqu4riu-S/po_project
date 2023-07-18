@@ -1,0 +1,543 @@
+package ggc;
+
+import java.io.Serializable;
+import java.io.IOException;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.*;
+
+import ggc.exceptions.BadEntryException;
+import ggc.exceptions.PartnerAlreadyExistsException;
+import ggc.exceptions.PartnerDoesNotExistException;
+import ggc.exceptions.ProductDoesNotExistException;
+import ggc.exceptions.InsuficientStockException;
+
+/**
+ * Class Warehouse implements a warehouse.
+ */
+public class Warehouse implements Serializable {
+
+  /** Serial number for serialization. */
+  private static final long serialVersionUID = 202110282338L;
+  
+  private Integer _date = 0;
+
+  private LinkedList<Partner> _partners = new LinkedList<>();
+  //@sereno [Dissolução do Sector]
+  //private TreeSet<Sector> _stock = new TreeSet<>();
+  private TreeMap<Product, TreeSet<Batch>> _stock = new TreeMap<>();
+  transient private HashMap<Partner, LinkedList<Transaction>> _transactions = new HashMap<>();
+
+  private double _availableBalance = 0;
+  private double _accountingBalance = 0;
+
+
+
+
+  public double getAvailableBalance() {
+    return _availableBalance;
+  }
+
+  public void updateAvailableBalance(double increment) {
+    _availableBalance += increment;
+  }
+
+  public double getAccountingBalance() {
+    return _accountingBalance;
+  }
+
+  public void updateAccountingBalance(double increment) {
+    _accountingBalance += increment;
+  }
+
+
+  /**
+   *
+   * @param id product ID
+   * @return returns the product of the _stock whose ID matches the given argument, null otherwise
+   */
+  public Product getProduct(String id) {
+    Set<Product> products = _stock.keySet();
+    for (Product p : products) {
+      if (p.getName().equals(id)) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+
+  public void addProduct(String id, double price, int amount) {
+    Product p = new Product(id, price, amount);
+    //?B melhor criar em treeset para espeficicar que o argumento eh batch?? ou crio assim
+    _stock.put(p, new TreeSet<>());
+  }
+
+
+  //?B da para juntar as addProduct e addDerivedProduct ??
+  public void addDerivedProduct(String id, double price, int amount, HashMap<String, Integer> _inProducts, double alpha) {
+    Product p = new DerivedProduct(id, price, amount, new Recipe(_inProducts, alpha));
+    //?B melhor criar em treeset para espeficicar que o argumento eh batch?? ou crio assim
+    _stock.put(p, new TreeSet<>());
+  }
+
+
+
+  public void registerAcquisition(String partnerID, String productID, double price, int amount) {
+    Product product = getProduct(productID);
+    if (_availableBalance >= price) {
+      // update warehouse balance
+      _availableBalance -= price;
+      _accountingBalance -= price; //?B i assume it can take negative values
+      // add new batch of the product to the tree set
+      _stock.get(product).add(new Batch(product, partnerID, amount, price));
+      updateBatchMaxMinPrices(product, price);
+      product.updateTotalStock(amount);
+      Partner partner = getPartnerFromTransactions(partnerID);
+      if (partner != null) {
+        _transactions.get(partner).add(new Acquisition(getDate(), partner, product, amount, price));
+      }
+      //
+      // else criamos novo partner na lista de transactions e adicionamos a primeira transaction a ele na linked list
+    }
+  }
+
+
+
+  public String getTransaction(int id) {
+    for (Partner p : _transactions.keySet()) {
+      for (Transaction t : _transactions.get(p)) {
+        if (t.getId() == id) {
+          return t.accept(new ToStringDisplay());
+        }
+      }
+    }
+    return null;
+  }
+
+
+  /**
+   *
+   * @param partnerID partner id
+   * @return partner in _transactions whose id is the given argument, null otherwise
+   */
+  public Partner getPartnerFromTransactions(String partnerID) {
+    for (Partner p : _transactions.keySet()) {
+      if (p.getName().equals(partnerID)) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  public int getAvailableStock(Product product) {
+    int availableStock = 0;
+    for (Batch b : _stock.get(product)) {
+      availableStock += b.getRemainingUnits();
+    }
+    return availableStock;
+  }
+
+  public int getProductTotalStock(Product product) {
+    for (Product p : _stock.keySet()) {
+      if (p.equals(product)) {
+        return p.getTotalStock();
+      }
+    }
+    return -1;
+  }
+
+  public int updateProductTotalStock(Product product, int increment) {
+    for (Product p : _stock.keySet()){
+      if (p.equals(product)){
+        p.updateTotalStock(increment);
+        return p.getTotalStock();
+      }
+    }
+    return -1;
+  }
+
+  public void registerSale(String partnerID, int deadline, String productID, int amount) throws InsuficientStockException {
+    Transaction sale = new Transaction(_date + deadline, amount);
+    Product productKey = new Product(productID);
+    int availableStock = getAvailableStock(productKey);
+    float price = 0;
+
+    if (amount <= availableStock) {
+      TreeSet<Batch> batches = new TreeSet<>(new Comparator<Batch>(){
+          @Override
+          public int compare(Batch b1, Batch b2) {
+            return Double.compare(b1.getPriceUnit(), b2.getPriceUnit());
+          }
+        });
+      batches.addAll(_stock.get(productKey));
+      updateProductTotalStock(productKey, -amount);
+      for (Batch b : batches) {
+        if (amount > 0) {
+          int batchRemainingUnits = b.getRemainingUnits();
+          if (amount > batchRemainingUnits) {
+            price += amount * b.getPriceUnit();
+            _stock.get(productKey).remove(b);
+            amount -= batchRemainingUnits;
+          } else if (amount < batchRemainingUnits) {
+            price += amount * b.getPriceUnit();
+            b.updateBatch(-amount);
+            amount = 0;
+          } else {
+            price += amount * b.getPriceUnit();
+            _stock.get(productKey).remove(b);
+            amount = 0;
+          }
+        }
+      }
+      sale.setId(1); //@sereno change later
+      sale.setPartner(findPartner(partnerID));
+      sale.setProduct(productKey);
+      sale.setPrice(price);
+    } else {
+      /*
+      if (isDerivedProduct()) {
+        // Loop na recipe à procura se pode fabricar o produto 
+      } else {
+        throw new InsuficientStockException(productID, 
+          amount, getProductTotalStock(productKey));
+      }
+      */
+    }
+    addTransaction(sale);
+  }
+
+  public void addTransaction(Transaction t) {
+    if (_transactions.get(t.getPartner()) == null) {
+      LinkedList<Transaction> partnerTransactions = new LinkedList<>();
+      partnerTransactions.add(t);
+      _transactions.put(t.getPartner(), partnerTransactions);
+    } else {
+      _transactions.get(t.getPartner()).add(t);
+    }
+  }
+
+
+  // bruno
+  /**
+   *
+   * @param p product
+   * @param price price per unit of the product's batch to be added
+   */
+  public void updateBatchMaxMinPrices(Product p, double price) {
+    if (price > p.getMaxPrice()) {
+      p.setMaxPrice(price);
+    }
+    if (price < p.getLowestPrice()) {
+      p.setLowestPrice(price);
+    }
+  }
+
+  /**
+   *
+   * @param p product
+   * @param b first batch to be added to sector
+   */
+  public void addBatch(Product p, Batch b) {
+    //@sereno devia ser binary search porque em principio isto está ordenado alfabeticamente
+    // mas o Collections.binarySearch não funciona para sets.
+    for (Product key : _stock.keySet()) { 
+      if (key.equals(p)) {
+        // bruno (funcao auxiliar para poder ser usada noutros contextos de batches)
+        updateBatchMaxMinPrices(key, b.getPriceUnit());
+        key.updateTotalStock(b.getRemainingUnits());
+        b.setProduct(key);
+        _stock.get(key).add(b);
+        return;
+      }
+    }
+    TreeSet<Batch> batches = new TreeSet<>();
+    b.setProduct(p);
+    batches.add(b);
+    _stock.put(p, batches);
+  }
+
+  /**
+   *
+   * @param line array of strings with batch information
+   */
+  public void registerBatch(String[] line) {
+    Batch b = new Batch(null, line[2], Integer.parseInt(line[4]), Integer.parseInt(line[3]));
+    Product key;
+
+    /* Simple Product */
+    if (line.length == 5) {
+      key = new Product(line[1], 
+        Float.parseFloat(line[3]),
+        Integer.parseInt(line[4]));
+    }
+    /* Derived Product */
+    else {
+      key = new DerivedProduct(line[1], 
+          Float.parseFloat(line[3]), 
+          Integer.parseInt(line[4]), 
+          new Recipe(createRecipeList(line[6]), 
+          Float.parseFloat(line[5])));
+    }
+    addBatch(key, b);
+  }
+
+  /**
+   *
+   * @param recipeStr string containing products and their quantities info
+   * @return map with key as product ID and value as its quantity
+   */
+  public HashMap<String, Integer> createRecipeList(String recipeStr) {
+    String[] arrComponents = recipeStr.split("#");
+    HashMap<String, Integer> productList = new HashMap<>();
+    for (String c : arrComponents) {
+      String[] arrComponent = c.split(":");
+      productList.put(arrComponent[0], Integer.parseInt(arrComponent[1]));
+    }
+    return productList;
+  }
+
+  /** Partner related methods */
+  /**
+   *
+   * @param id partner ID
+   * @return true if partner with given ID exists, false otherwise //@sereno alterei a função
+   */
+  public Partner findPartner(String id) {
+    for (Partner p : _partners) {
+      if (p.getId().toUpperCase().equals(id.toUpperCase())) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  /**
+   *
+   * @param partnerID partner ID
+   * @return partner whose ID is given as argument
+   * @throws PartnerDoesNotExistException if there is no partner registered with given ID
+   */
+  public Partner getPartner(String partnerID) throws PartnerDoesNotExistException {
+    for (Partner p : _partners) {
+      if (p.getId().equalsIgnoreCase(partnerID)) {
+        return p;
+      }
+    }
+    throw new PartnerDoesNotExistException(partnerID); // ?
+  }
+
+  /**
+   *
+   * @return list of warehouse partners
+   */
+  public LinkedList<Partner> getPartners() {
+    Collections.sort(_partners);
+    return _partners;
+  }
+
+  /**
+   *
+   * @param id partner ID
+   * @param name partner name
+   * @param address partner address
+   * @throws PartnerAlreadyExistsException if exists a partner registered with the given ID
+   */
+  public void registerPartner(String id, String name, String address) throws PartnerAlreadyExistsException {
+    if (findPartner(id) != null){
+      throw new PartnerAlreadyExistsException(id);
+    } else {
+      _partners.add(new Partner(id, name, address));
+    }
+  }
+
+
+  /** Transaction related methods */
+  /**
+   *
+   * @param partner Partner object
+   * @return list of the partner's transactions
+   */
+  public LinkedList<Transaction> getTransactionsFromPartner(Partner partner) {
+    return _transactions.get(partner);
+  }
+
+  /**
+   *
+   * @param partner Partner object
+   * @param no number of strings inside className argument
+   * @param className list of strings referring to transaction type
+   * @return list of specific transactions performed between warehouse and given partner
+   */
+  private LinkedList<Transaction> getSpecificTransactionsFromPartner(Partner partner, int no, String... className) {
+    LinkedList<Transaction> specificTransactions = new LinkedList<>();
+
+    for (Transaction t : getTransactionsFromPartner(partner)) {
+      for (int i = 0; i < no; i++){
+        if (className[i].equals(t.getClass().getName())) {
+          specificTransactions.add(t);
+        }
+      }
+    }
+    return specificTransactions;
+  }
+
+
+  /**
+   *
+   * @param partner Partner object
+   * @return list of buy transactions between warehouse and given partner
+   */
+  public LinkedList<Transaction> getBuyTransactionsFromPartner(Partner partner) {
+    return getSpecificTransactionsFromPartner(partner, 1, "BuyTransaction");
+  }
+
+
+  /**
+   *
+   * @param partner Partner object
+   * @return list of sell and breakdown transactions between warehouse and given partner
+   */
+  public LinkedList<Transaction> getSellBreakdownTransactionsFromPartner(Partner partner) {
+    return getSpecificTransactionsFromPartner(partner, 2, "SellTransaction", "BreakdownTransaction");
+  }
+
+  /**
+   * Reverts state of the notification toggle
+   * 
+   * @param partnerID partner ID
+   * @param productID product ID
+   */
+  public void toggleProductNotifications(String partnerID, String productID) {
+    for (Partner p : _partners) {
+      if (p.getId().equals(partnerID) && p.hasProductToggle(productID)) {
+        p.setToggle(productID);
+      } else { 
+        return; // UnknownProductKeyException
+      }
+    }
+  } 
+
+  public void showPartnerSales(String partnerID) {
+    /** Entrega final */
+  }
+
+  public void showPartnerAcquisitions(String partnerID) {
+    /** Entrega final */
+  }
+
+  /**
+   * Adds product notification to partners with toggle on
+   *
+   * @param notification Notification object
+   */
+  public void notificatePartners(Notification notification) {
+    String productID = notification.getProductID();
+    for (Partner p : _partners) {
+      if (p.hasProductToggle(productID) && p.getToggleState(productID)) {
+        p.addNotification(notification);
+      }
+    }
+  }
+
+  
+  /** Date related methods */
+  /**
+   *
+   * @return current date
+   */
+  public Integer getDate() {
+    return _date;
+  }
+  public void incrementDate(Integer increment) {
+    _date += increment;
+  }
+
+
+  /** Product related methods */
+  /**
+   *
+   * @return list of warehouse products
+   */
+  public ArrayList<Product> getProducts() {
+    ArrayList<Product> products = new ArrayList<>(_stock.size());
+    products.addAll(_stock.keySet());
+    return products;
+  }
+
+
+  public LinkedList<Batch> getBatchesUnderPrice(double priceLimit) {
+    LinkedList<Batch> batches = new LinkedList<>();
+    for (Product p : _stock.keySet()) {
+      if (p.getLowestPrice() < priceLimit) {
+        for (Batch b : _stock.get(p)) {
+          if (b.getPriceUnit() < priceLimit) {
+            batches.add(b);
+          }
+        }
+      }
+    }
+    return batches;
+  }
+
+  /** Batch related methods */
+  /**
+   *
+   * @return list of warehouse batches
+   */
+  public LinkedList<Batch> getBatches() {
+    LinkedList<Batch> batches = new LinkedList<>();
+
+    for (Product key : _stock.keySet()) {
+      batches.addAll(_stock.get(key));
+    }
+    return batches;
+  }
+
+  public TreeSet<Batch> getProductBatches(Product key) throws ProductDoesNotExistException {
+    if (_stock.containsKey(key)){
+      return _stock.get(key);
+    } else {
+      throw new ProductDoesNotExistException(key.getName());
+    }
+  }
+
+  public LinkedList<Batch> getPartnerBatches(String partnerID) throws PartnerDoesNotExistException {
+    if (findPartner(partnerID) != null) {
+      LinkedList<Batch> batches = new LinkedList<>();
+      for (Batch b : getBatches()) {
+        if (b.getPartnerID().toUpperCase().equals(partnerID.toUpperCase())) {
+          batches.add(b);
+        } 
+      }
+      return batches;
+    } else {
+      throw new PartnerDoesNotExistException(partnerID);
+    }
+  }
+
+  /**
+   *
+   * @param txtfile filename to be loaded
+   * @throws IOException for file reading failures
+   * @throws BadEntryException for unknown import file entries
+   * @throws PartnerAlreadyExistsException for duplicate partner id cases
+   */
+  void importFile(String txtfile) throws IOException, BadEntryException, PartnerAlreadyExistsException {
+    try {
+      Scanner reader = new Scanner(new File(txtfile));
+      while (reader.hasNextLine()) {
+        String[] arrLine = reader.nextLine().split("\\|");
+        if (arrLine[0].equals("PARTNER")) {
+          registerPartner(arrLine[1], arrLine[2], arrLine[3]);
+        }
+        else {
+          registerBatch(arrLine);
+        }
+      }
+      reader.close();
+    } catch (FileNotFoundException e) {
+      throw new BadEntryException(txtfile);
+    }
+  }
+}
